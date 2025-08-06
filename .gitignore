@@ -1,0 +1,105 @@
+# Erlang/OTP
+*.beam
+*.plt
+*.dump
+*.crashdump
+erl_crash.dump
+.concrete/DEV_MODE
+.rebar
+
+# Rebar3
+.rebar3
+_*
+.eunit
+*.o
+*.beam
+*.plt
+*.swp
+*.swo
+*~
+.erlang.cookie
+ebin/
+log/
+erl_crash.dump
+.rebar
+logs/
+_build/
+.idea/
+*.iml
+rebar3.crashdump
+*~
+
+# Dependencies
+deps/
+
+# Documentation
+doc/
+docs/
+
+# Test artifacts
+.eunit/
+test/*.beam
+test_*.erl
+ct_run.*
+ct_default.css
+index.html
+all_runs.html
+variables-ct*
+*.html
+*.css
+test/ct_logs/
+
+# Coverage
+cover/
+_cover/
+*.coverdata
+
+# Dialyzer
+.dialyzer_plt
+plt/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+.vscode/
+*.sublime-*
+
+# Project specific
+*.sql
+test_docker_postgres.sh
+test_persistent.erl
+test_migration_script.erl
+test/*.bak
+eorm_test
+eorm_demo
+
+# Environment files
+.env
+.env.local
+*.env
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

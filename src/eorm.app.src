@@ -1,0 +1,20 @@
+{application, eorm,
+ [{description, "Erlang ORM Framework - Like GORM for Erlang"},
+  {vsn, "0.1.0"},
+  {registered, [eorm_sup, eorm_registry, eorm_pool_sup]},
+  {mod, {eorm_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    crypto,
+    ssl,
+    inets,
+    poolboy,
+    jsx
+   ]},
+  {env, []},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
