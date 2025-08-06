@@ -1,5 +1,26 @@
 #!/bin/bash
 
+# 设置错误时立即退出
+set -e
+
+# 错误处理函数
+error_exit() {
+    echo ""
+    echo "❌ 错误: $1"
+    echo ""
+    exit 1
+}
+
+# 成功消息函数
+success_msg() {
+    echo "✅ $1"
+}
+
+# 信息消息函数
+info_msg() {
+    echo "ℹ️  $1"
+}
+
 echo "=========================================="
 echo "EORM Docker PostgreSQL 自动迁移测试"
 echo "（纯 Docker 版本，无需 Python）"
@@ -12,12 +33,71 @@ DB_USER="dev"
 DB_PASSWORD="123"
 DB_NAME="eorm_test"
 
+# 检查 Docker 是否安装
+echo "【预检查】环境验证"
+echo "----------------------------------------"
+if ! command -v docker &> /dev/null; then
+    error_exit "Docker 未安装。请先安装 Docker: https://www.docker.com/get-started"
+fi
+success_msg "Docker 已安装"
+
+# 检查 Docker 服务是否运行
+if ! docker info &> /dev/null; then
+    error_exit "Docker 服务未运行。请启动 Docker Desktop 或 Docker 服务"
+fi
+success_msg "Docker 服务正在运行"
+
+# 检查 PostgreSQL 容器是否存在
+if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    error_exit "PostgreSQL 容器 '${CONTAINER_NAME}' 不存在。请先创建容器：
+    docker run -d --name ${CONTAINER_NAME} \\
+        -e POSTGRES_USER=${DB_USER} \\
+        -e POSTGRES_PASSWORD=${DB_PASSWORD} \\
+        -p 5432:5432 \\
+        postgres:13"
+fi
+info_msg "找到 PostgreSQL 容器: ${CONTAINER_NAME}"
+
+# 检查容器是否正在运行
+if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo "⚠️  容器 '${CONTAINER_NAME}' 未运行，尝试启动..."
+    docker start ${CONTAINER_NAME}
+    
+    # 等待容器启动
+    echo "等待 PostgreSQL 启动..."
+    for i in {1..30}; do
+        if docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "SELECT 1" &> /dev/null; then
+            success_msg "PostgreSQL 已启动"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            error_exit "PostgreSQL 启动超时。请检查容器日志: docker logs ${CONTAINER_NAME}"
+        fi
+        echo -n "."
+        sleep 1
+    done
+    echo ""
+else
+    # 验证 PostgreSQL 连接
+    if ! docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "SELECT 1" &> /dev/null; then
+        error_exit "无法连接到 PostgreSQL。请检查容器状态和配置"
+    fi
+    success_msg "PostgreSQL 容器正在运行且可连接"
+fi
+
+echo ""
+
 # 创建测试数据库
 echo "【步骤 1】创建测试数据库"
 echo "----------------------------------------"
-docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
-docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
-echo "✓ 数据库 $DB_NAME 已创建"
+if ! docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null; then
+    error_exit "无法删除旧数据库。请检查数据库权限"
+fi
+
+if ! docker exec -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;" 2>/dev/null; then
+    error_exit "无法创建数据库 ${DB_NAME}"
+fi
+success_msg "数据库 $DB_NAME 已创建"
 echo ""
 
 # 执行自动迁移（模拟 EORM 自动生成的 DDL）
@@ -108,8 +188,10 @@ INSERT INTO eorm_migrations (model, version, checksum, status, changes) VALUES
 EOF
 
 # 执行迁移 SQL
-docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_migration.sql
-echo "✓ 表结构自动创建完成"
+if ! docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_migration.sql 2>/dev/null; then
+    error_exit "执行迁移 SQL 失败"
+fi
+success_msg "表结构自动创建完成"
 echo ""
 
 # 验证表结构
@@ -153,8 +235,10 @@ INSERT INTO test_tags (name, slug) VALUES
     ('Database', 'database');
 EOF
 
-docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_crud.sql
-echo "✓ 测试数据插入成功"
+if ! docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_crud.sql 2>/dev/null; then
+    error_exit "插入测试数据失败"
+fi
+success_msg "测试数据插入成功"
 echo ""
 
 # 查询测试
@@ -196,8 +280,10 @@ INSERT INTO eorm_migrations (model, version, checksum, status, changes)
 VALUES ('test_users', '20240101130000', 'xyz789', 'success', 'ALTER TABLE: add avatar_url, last_login');
 EOF
 
-docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_update.sql
-echo "✓ Schema 更新成功"
+if ! docker exec -i -e PGPASSWORD=$DB_PASSWORD $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < /tmp/eorm_update.sql 2>/dev/null; then
+    error_exit "Schema 更新失败"
+fi
+success_msg "Schema 更新成功"
 echo ""
 
 # 统计信息
@@ -223,6 +309,14 @@ FROM eorm_migrations
 ORDER BY id;"
 echo ""
 
+# 清理临时文件
+cleanup() {
+    rm -f /tmp/eorm_migration.sql /tmp/eorm_crud.sql /tmp/eorm_update.sql 2>/dev/null
+}
+
+# 设置退出时清理
+trap cleanup EXIT
+
 # 总结
 echo "=========================================="
 echo "✅ 测试完成！"
@@ -239,4 +333,9 @@ echo "✓ Schema 更新 - 检测差异并自动更新"
 echo "✓ 迁移历史 - 完整记录所有变更"
 echo ""
 echo "🎉 EORM 成功实现了像 GORM 一样的自动迁移功能！"
+echo ""
+
+# 提示如何查看数据库
+echo "提示：如需查看测试数据库，请运行："
+echo "  docker exec -it ${CONTAINER_NAME} psql -U ${DB_USER} -d ${DB_NAME}"
 echo ""
