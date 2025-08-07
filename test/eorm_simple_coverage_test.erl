@@ -317,18 +317,26 @@ adapter_simple_test_() ->
     ].
 
 test_get_adapter_all() ->
-    ?assertEqual(postgres, eorm_adapter:get_adapter(postgres)),
-    ?assertEqual(mysql, eorm_adapter:get_adapter(mysql)),
-    ?assertEqual(sqlite, eorm_adapter:get_adapter(sqlite)).
+    %% get_adapter/0 returns {adapter, config}
+    %% Test setting and getting adapter
+    eorm_adapter:set_adapter(postgres),
+    Result1 = eorm_adapter:get_adapter(),
+    ?assertMatch({postgres, _}, Result1),
+    
+    eorm_adapter:set_adapter(mysql),
+    Result2 = eorm_adapter:get_adapter(),
+    ?assertMatch({mysql, _}, Result2),
+    
+    eorm_adapter:set_adapter(sqlite),
+    Result3 = eorm_adapter:get_adapter(),
+    ?assertMatch({sqlite, _}, Result3).
 
 test_adapter_connections() ->
     try
-        _R1 = eorm_adapter:connect(postgres, #{}),
-        _R2 = eorm_adapter:connect(mysql, #{}),
-        _R3 = eorm_adapter:connect(sqlite, #{}),
-        _R4 = eorm_adapter:disconnect(postgres),
-        _R5 = eorm_adapter:disconnect(mysql),
-        _R6 = eorm_adapter:disconnect(sqlite),
+        %% Test get_connection which is exported
+        _R1 = eorm_adapter:get_connection(postgres),
+        _R2 = eorm_adapter:get_connection(mysql),
+        _R3 = eorm_adapter:get_connection(sqlite),
         ok
     catch
         _:_ -> ok
@@ -336,10 +344,10 @@ test_adapter_connections() ->
 
 test_adapter_queries() ->
     try
+        %% Test exported functions only
         _R1 = eorm_adapter:query(postgres, <<"SELECT 1">>, []),
         _R2 = eorm_adapter:execute_ddl(postgres, <<"CREATE TABLE test (id INT)">>),
         _R3 = eorm_adapter:get_connection(postgres),
-        _R4 = eorm_adapter:pool_stats(postgres),
         ok
     catch
         _:_ -> ok
