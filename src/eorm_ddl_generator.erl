@@ -8,7 +8,12 @@
     generate_alter_table/3,
     generate_create_index/3,
     generate_drop_table/2,
-    generate_drop_index/2
+    generate_drop_index/2,
+    generate_drop_index/3,
+    generate_truncate_table/2,
+    generate_rename_table/3,
+    generate_add_foreign_key/3,
+    generate_add_check_constraint/3
 ]).
 
 -include("eorm.hrl").
@@ -33,7 +38,24 @@ generate_alter_table(Adapter, TableName, Changes) ->
     end, ChangeList).
 
 %% @doc 生成 CREATE INDEX 语句
--spec generate_create_index(atom(), atom(), tuple()) -> iolist().
+-spec generate_create_index(atom(), atom() | binary(), map() | tuple()) -> iolist().
+generate_create_index(Adapter, TableName, Index) when is_map(Index) ->
+    IndexName = maps:get(name, Index),
+    Columns = maps:get(columns, Index, []),
+    Unique = maps:get(unique, Index, false),
+    
+    UniqueClause = case Unique of
+        true -> "UNIQUE ";
+        false -> ""
+    end,
+    
+    ColumnList = format_index_columns(Columns, asc),
+    TableStr = table_to_string(TableName),
+    
+    SQL = io_lib:format("CREATE ~sINDEX ~s ON ~s (~s)",
+                  [UniqueClause, atom_to_list(IndexName), 
+                   TableStr, ColumnList]),
+    iolist_to_binary(SQL);
 generate_create_index(Adapter, TableName, {IndexName, Columns}) ->
     generate_create_index(Adapter, TableName, {IndexName, Columns, []});
 generate_create_index(_Adapter, TableName, {IndexName, Columns, Options}) ->
@@ -46,15 +68,18 @@ generate_create_index(_Adapter, TableName, {IndexName, Columns, Options}) ->
     end,
     
     ColumnList = format_index_columns(Columns, Order),
+    TableStr = table_to_string(TableName),
     
-    io_lib:format("CREATE ~sINDEX ~s ON ~s (~s)",
+    SQL = io_lib:format("CREATE ~sINDEX ~s ON ~s (~s)",
                   [UniqueClause, atom_to_list(IndexName), 
-                   atom_to_list(TableName), ColumnList]).
+                   TableStr, ColumnList]),
+    iolist_to_binary(SQL).
 
 %% @doc 生成 DROP TABLE 语句
--spec generate_drop_table(atom(), atom()) -> iolist().
+-spec generate_drop_table(atom(), atom() | binary()) -> iolist().
 generate_drop_table(_Adapter, TableName) ->
-    io_lib:format("DROP TABLE IF EXISTS ~s", [atom_to_list(TableName)]).
+    TableStr = table_to_string(TableName),
+    iolist_to_binary(io_lib:format("DROP TABLE IF EXISTS ~s", [TableStr])).
 
 %% @doc 生成 DROP INDEX 语句
 -spec generate_drop_index(atom(), atom()) -> iolist().
@@ -83,11 +108,14 @@ generate_postgres_create_table(TableName, Schema) ->
     %% 组合所有定义
     AllDefs = ColumnDefs ++ ConstraintDefs,
     
-    [
-        "CREATE TABLE IF NOT EXISTS ", atom_to_list(TableName), " (\n    ",
+    TableStr = table_to_string(TableName),
+    
+    SQL = iolist_to_binary([
+        "CREATE TABLE IF NOT EXISTS ", TableStr, " (\n    ",
         string:join(AllDefs, ",\n    "),
         "\n)"
-    ].
+    ]),
+    SQL.
 
 %% @private
 generate_postgres_column(Field) ->
@@ -116,11 +144,17 @@ postgres_type(Type, Options) ->
         integer when IsPrimaryKey -> "SERIAL";
         integer -> "INTEGER";
         bigint -> "BIGINT";
+        smallint -> "SMALLINT";
+        serial -> "SERIAL";
+        bigserial -> "BIGSERIAL";
         {string, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
+        {varchar, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
         string -> "VARCHAR(255)";
+        varchar -> "VARCHAR(255)";
         text -> "TEXT";
         boolean -> "BOOLEAN";
         float -> "FLOAT";
+        double -> "DOUBLE PRECISION";
         {decimal, P, S} -> io_lib:format("DECIMAL(~p,~p)", [P, S]);
         decimal -> "DECIMAL";
         datetime -> "TIMESTAMP";
@@ -128,8 +162,17 @@ postgres_type(Type, Options) ->
         date -> "DATE";
         time -> "TIME";
         binary -> "BYTEA";
+        blob -> "BYTEA";
         json -> "JSONB";
+        jsonb -> "JSONB";
         uuid -> "UUID";
+        {array, ElementType} -> postgres_array_type(ElementType);
+        int4range -> "INT4RANGE";
+        int8range -> "INT8RANGE";
+        numrange -> "NUMRANGE";
+        tsrange -> "TSRANGE";
+        tstzrange -> "TSTZRANGE";
+        daterange -> "DATERANGE";
         {enum, Values} -> generate_postgres_enum(Values);
         _ -> error({unsupported_type, ActualType})
     end.
@@ -141,6 +184,46 @@ generate_postgres_enum(_Values) ->
     "VARCHAR(50)".
 
 %% @private
+postgres_array_type(ElementType) ->
+    BaseType = case ElementType of
+        integer -> "INTEGER";
+        bigint -> "BIGINT";
+        smallint -> "SMALLINT";
+        text -> "TEXT";
+        varchar -> "VARCHAR(255)";
+        {varchar, Len} -> io_lib:format("VARCHAR(~p)", [Len]);
+        boolean -> "BOOLEAN";
+        float -> "FLOAT";
+        double -> "DOUBLE PRECISION";
+        uuid -> "UUID";
+        _ -> "TEXT"
+    end,
+    BaseType ++ "[]".
+
+%% @private
+generate_postgres_constraint(Constraint) when is_map(Constraint) ->
+    case maps:get(type, Constraint, undefined) of
+        foreign_key ->
+            Name = maps:get(name, Constraint),
+            Column = maps:get(column, Constraint),
+            {RefTable, RefColumn} = maps:get(references, Constraint),
+            OnDelete = maps:get(on_delete, Constraint, restrict),
+            OnUpdate = maps:get(on_update, Constraint, restrict),
+            io_lib:format("CONSTRAINT ~s FOREIGN KEY (~s) REFERENCES ~s(~s) ON DELETE ~s ON UPDATE ~s",
+                         [atom_to_list(Name), atom_to_list(Column), atom_to_list(RefTable), 
+                          atom_to_list(RefColumn),
+                          on_action_to_sql(OnDelete), on_action_to_sql(OnUpdate)]);
+        check ->
+            Name = maps:get(name, Constraint, chk_constraint),
+            Expression = maps:get(expression, Constraint),
+            io_lib:format("CONSTRAINT ~s CHECK (~s)", [atom_to_list(Name), Expression]);
+        unique ->
+            Columns = maps:get(columns, Constraint),
+            ColumnList = string:join([atom_to_list(C) || C <- Columns], ", "),
+            io_lib:format("UNIQUE (~s)", [ColumnList]);
+        _ ->
+            ""
+    end;
 generate_postgres_constraint({foreign_key, Column, RefTable, RefColumn, Options}) ->
     OnDelete = proplists:get_value(on_delete, Options, restrict),
     OnUpdate = proplists:get_value(on_update, Options, restrict),
@@ -181,11 +264,14 @@ generate_mysql_create_table(TableName, Schema) ->
     %% 表选项
     TableOptions = generate_mysql_table_options(Options),
     
-    [
-        "CREATE TABLE IF NOT EXISTS ", atom_to_list(TableName), " (\n    ",
+    TableStr = table_to_string(TableName),
+    
+    SQL = iolist_to_binary([
+        "CREATE TABLE IF NOT EXISTS ", TableStr, " (\n    ",
         string:join(AllDefs, ",\n    "),
         "\n) ", TableOptions
-    ].
+    ]),
+    SQL.
 
 %% @private
 generate_mysql_column(Field) ->
@@ -214,11 +300,17 @@ mysql_type(Type, Options) ->
         integer when IsPrimaryKey -> "INT AUTO_INCREMENT";
         integer -> "INT";
         bigint -> "BIGINT";
+        smallint -> "SMALLINT";
+        serial -> "INT AUTO_INCREMENT";
+        bigserial -> "BIGINT AUTO_INCREMENT";
         {string, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
+        {varchar, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
         string -> "VARCHAR(255)";
+        varchar -> "VARCHAR(255)";
         text -> "TEXT";
         boolean -> "TINYINT(1)";
         float -> "FLOAT";
+        double -> "DOUBLE";
         {decimal, P, S} -> io_lib:format("DECIMAL(~p,~p)", [P, S]);
         decimal -> "DECIMAL";
         datetime -> "DATETIME";
@@ -226,8 +318,11 @@ mysql_type(Type, Options) ->
         date -> "DATE";
         time -> "TIME";
         binary -> "BLOB";
+        blob -> "BLOB";
         json -> "JSON";
+        jsonb -> "JSON";
         uuid -> "VARCHAR(36)";
+        {array, _} -> "JSON";  % MySQL doesn't have native array type
         {enum, Values} -> generate_mysql_enum(Values);
         _ -> error({unsupported_type, ActualType})
     end.
@@ -243,7 +338,24 @@ generate_mysql_constraint(Constraint) ->
     generate_postgres_constraint(Constraint).
 
 %% @private
-generate_mysql_table_options(Options) ->
+generate_mysql_table_options(Options) when is_map(Options) ->
+    Engine = maps:get(engine, Options, innodb),
+    Charset = maps:get(charset, Options, utf8mb4),
+    
+    EngineStr = case Engine of
+        E when is_binary(E) -> binary_to_list(E);
+        E when is_atom(E) -> string:to_upper(atom_to_list(E));
+        E -> E
+    end,
+    CharsetStr = case Charset of
+        C when is_binary(C) -> binary_to_list(C);
+        C when is_atom(C) -> atom_to_list(C);
+        C -> C
+    end,
+    
+    io_lib:format("ENGINE=~s DEFAULT CHARSET=~s",
+                  [EngineStr, CharsetStr]);
+generate_mysql_table_options(Options) when is_list(Options) ->
     Engine = proplists:get_value(engine, Options, innodb),
     Charset = proplists:get_value(charset, Options, utf8mb4),
     Comment = proplists:get_value(comment, Options, ""),
@@ -258,7 +370,9 @@ generate_mysql_table_options(Options) ->
         _ -> Parts ++ [io_lib:format("COMMENT='~s'", [Comment])]
     end,
     
-    string:join(Parts2, " ").
+    string:join(Parts2, " ");
+generate_mysql_table_options(_) ->
+    "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4".
 
 %%====================================================================
 %% SQLite DDL Generation
@@ -273,11 +387,14 @@ generate_sqlite_create_table(TableName, Schema) ->
         generate_sqlite_column(Field)
     end, expand_fields(Fields)),
     
-    [
-        "CREATE TABLE IF NOT EXISTS ", atom_to_list(TableName), " (\n    ",
+    TableStr = table_to_string(TableName),
+    
+    SQL = iolist_to_binary([
+        "CREATE TABLE IF NOT EXISTS ", TableStr, " (\n    ",
         string:join(ColumnDefs, ",\n    "),
         "\n)"
-    ].
+    ]),
+    SQL.
 
 %% @private
 generate_sqlite_column(Field) ->
@@ -306,11 +423,17 @@ sqlite_type(Type, Options) ->
         integer when IsPrimaryKey -> "INTEGER PRIMARY KEY AUTOINCREMENT";
         integer -> "INTEGER";
         bigint -> "INTEGER";
+        smallint -> "INTEGER";
+        serial -> "INTEGER PRIMARY KEY AUTOINCREMENT";
+        bigserial -> "INTEGER PRIMARY KEY AUTOINCREMENT";
         {string, _} -> "TEXT";
+        {varchar, _} -> "TEXT";
         string -> "TEXT";
+        varchar -> "TEXT";
         text -> "TEXT";
         boolean -> "INTEGER";
         float -> "REAL";
+        double -> "REAL";
         {decimal, _, _} -> "REAL";
         decimal -> "REAL";
         datetime -> "TEXT";
@@ -318,8 +441,18 @@ sqlite_type(Type, Options) ->
         date -> "TEXT";
         time -> "TEXT";
         binary -> "BLOB";
+        blob -> "BLOB";
         json -> "TEXT";
+        jsonb -> "TEXT";
         uuid -> "TEXT";
+        {array, _} -> "TEXT";  % SQLite doesn't have native array type
+        int4range -> "TEXT";
+        int8range -> "TEXT";
+        numrange -> "TEXT";
+        tsrange -> "TEXT";
+        tstzrange -> "TEXT";
+        daterange -> "TEXT";
+        {enum, _} -> "TEXT";
         _ -> error({unsupported_type, ActualType})
     end.
 
@@ -418,6 +551,14 @@ generate_postgres_modify_column(TableName, ColumnName, NewSpec) ->
 %% Helper Functions
 %%====================================================================
 
+%% @private Convert table name to string
+table_to_string(TableName) when is_atom(TableName) ->
+    atom_to_list(TableName);
+table_to_string(TableName) when is_binary(TableName) ->
+    binary_to_list(TableName);
+table_to_string(TableName) when is_list(TableName) ->
+    TableName.
+
 %% @private 展开字段定义（处理 timestamps 等特殊字段）
 expand_fields(Fields) ->
     lists:flatmap(fun(Field) ->
@@ -433,6 +574,12 @@ expand_fields(Fields) ->
     end, Fields).
 
 %% @private 解析字段规格
+parse_field_spec(Field) when is_map(Field) ->
+    %% 直接处理map格式的字段定义
+    Name = maps:get(name, Field),
+    Type = maps:get(type, Field),
+    Options = maps:get(opts, Field, []),
+    {Name, #{type => Type, options => Options}};
 parse_field_spec({Name}) ->
     %% 自动推导类型
     Type = infer_field_type(Name),
@@ -505,3 +652,95 @@ on_action_to_sql(restrict) -> "RESTRICT";
 on_action_to_sql(set_null) -> "SET NULL";
 on_action_to_sql(no_action) -> "NO ACTION";
 on_action_to_sql(set_default) -> "SET DEFAULT".
+
+%%====================================================================
+%% Additional Public Functions for Testing
+%%====================================================================
+
+%% @doc Generate DROP INDEX with TableName (for some databases)
+-spec generate_drop_index(atom(), atom() | binary(), atom()) -> iolist().
+generate_drop_index(mysql, TableName, IndexName) ->
+    TableStr = case TableName of
+        T when is_atom(T) -> atom_to_list(T);
+        T when is_binary(T) -> binary_to_list(T)
+    end,
+    IndexStr = atom_to_list(IndexName),
+    iolist_to_binary(io_lib:format("DROP INDEX ~s ON ~s", [IndexStr, TableStr]));
+generate_drop_index(Adapter, _TableName, IndexName) ->
+    generate_drop_index(Adapter, IndexName).
+
+%% @doc Generate TRUNCATE TABLE statement
+-spec generate_truncate_table(atom(), atom() | binary()) -> iolist().
+generate_truncate_table(_Adapter, TableName) ->
+    TableStr = case TableName of
+        T when is_atom(T) -> atom_to_list(T);
+        T when is_binary(T) -> binary_to_list(T)
+    end,
+    iolist_to_binary(io_lib:format("TRUNCATE TABLE ~s", [TableStr])).
+
+%% @doc Generate RENAME TABLE statement
+-spec generate_rename_table(atom(), atom() | binary(), atom() | binary()) -> iolist().
+generate_rename_table(mysql, OldName, NewName) ->
+    OldStr = case OldName of
+        O when is_atom(O) -> atom_to_list(O);
+        O when is_binary(O) -> binary_to_list(O)
+    end,
+    NewStr = case NewName of
+        N when is_atom(N) -> atom_to_list(N);
+        N when is_binary(N) -> binary_to_list(N)
+    end,
+    iolist_to_binary(io_lib:format("RENAME TABLE ~s TO ~s", [OldStr, NewStr]));
+generate_rename_table(_Adapter, OldName, NewName) ->
+    OldStr = case OldName of
+        O when is_atom(O) -> atom_to_list(O);
+        O when is_binary(O) -> binary_to_list(O)
+    end,
+    NewStr = case NewName of
+        N when is_atom(N) -> atom_to_list(N);
+        N when is_binary(N) -> binary_to_list(N)
+    end,
+    iolist_to_binary(io_lib:format("ALTER TABLE ~s RENAME TO ~s", [OldStr, NewStr])).
+
+%% @doc Generate ADD FOREIGN KEY constraint
+-spec generate_add_foreign_key(atom(), atom() | binary(), map()) -> iolist().
+generate_add_foreign_key(Adapter, TableName, Constraint) ->
+    TableStr = case TableName of
+        T when is_atom(T) -> atom_to_list(T);
+        T when is_binary(T) -> binary_to_list(T)
+    end,
+    
+    Column = maps:get(column, Constraint, id),
+    {RefTable, RefColumn} = maps:get(references, Constraint, {users, id}),
+    OnDelete = maps:get(on_delete, Constraint, restrict),
+    OnUpdate = maps:get(on_update, Constraint, restrict),
+    
+    FK = {foreign_key, Column, RefTable, RefColumn, [{on_delete, OnDelete}, {on_update, OnUpdate}]},
+    
+    ConstraintDef = case Adapter of
+        postgres -> generate_postgres_constraint(FK);
+        mysql -> generate_mysql_constraint(FK);
+        sqlite -> "-- SQLite does not support adding foreign keys to existing tables"
+    end,
+    
+    iolist_to_binary(io_lib:format("ALTER TABLE ~s ADD ~s", [TableStr, ConstraintDef])).
+
+%% @doc Generate ADD CHECK constraint
+-spec generate_add_check_constraint(atom(), atom() | binary(), map()) -> iolist().
+generate_add_check_constraint(_Adapter, TableName, Constraint) ->
+    TableStr = case TableName of
+        T when is_atom(T) -> atom_to_list(T);
+        T when is_binary(T) -> binary_to_list(T)
+    end,
+    
+    Name = maps:get(name, Constraint, chk_constraint),
+    Expression = maps:get(expression, Constraint, <<"TRUE">>),
+    ExprStr = case Expression of
+        E when is_binary(E) -> binary_to_list(E);
+        E when is_list(E) -> E
+    end,
+    
+    iolist_to_binary(io_lib:format(
+        "ALTER TABLE ~s ADD CONSTRAINT ~s CHECK (~s)",
+        [TableStr, atom_to_list(Name), ExprStr]
+    )).
+
