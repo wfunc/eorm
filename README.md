@@ -183,13 +183,46 @@ eorm:insert_all(user, Users).
 ).
 ```
 
+## 快速运行示例
+
+### 自动运行脚本
+```bash
+# 一键运行示例（自动启动Docker、编译、运行）
+./run_example.sh
+```
+
+### 手动运行
+```bash
+# 1. 启动PostgreSQL容器
+docker run --name postgres-dev \
+  -e POSTGRES_DB=eorm_test \
+  -e POSTGRES_USER=dev \
+  -e POSTGRES_PASSWORD=123 \
+  -p 5432:5432 -d postgres
+
+# 2. 启动Erlang Shell
+rebar3 shell
+
+# 3. 运行简单示例
+simple_usage:demo().
+```
+
 ## 完整示例
 
-查看 `examples/blog_app.erl` 获取完整的博客应用示例，包含：
+### 简单使用示例 (`examples/simple_usage.erl`)
+展示基本的EORM操作：
+- 数据库连接配置
+- 模型注册和自动迁移
+- 基本CRUD操作
+- 查询和更新演示
+
+### 博客应用示例 (`examples/blog_example.erl`)
+完整的博客应用示例，包含：
 - 用户、文章、评论、标签模型
 - 复杂关联关系
 - 事务处理
-- 高级查询
+- 高级查询操作
+- 统计和聚合查询
 
 ## 项目结构
 
