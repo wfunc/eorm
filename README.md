@@ -219,7 +219,7 @@ eorm/
 
 ```erlang
 {deps, [
-    {eorm, {git, "https://github.com/yourusername/eorm.git", {branch, "main"}}}
+    {eorm, {git, "https://github.com/wfunc/eorm.git", {branch, "main"}}}
 ]}.
 ```
 
