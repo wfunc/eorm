@@ -18,7 +18,13 @@
     limit :: integer() | undefined,
     offset :: integer() | undefined,
     distinct = false :: boolean(),
-    lock = false :: boolean() | write | read
+    lock = false :: boolean() | write | read,
+    
+    %% 新增字段
+    union = [] :: list(),
+    hints = [] :: list(),
+    optimized = false :: boolean(),
+    cache_ttl :: integer() | undefined
 }).
 
 %% 模型元数据

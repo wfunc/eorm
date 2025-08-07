@@ -144,6 +144,19 @@ expand_special_fields(Fields) ->
     end, Fields).
 
 %% @private 解析单个字段
+parse_field(#{name := Name} = Field) when is_map(Field) ->
+    %% 处理 map 格式的字段定义
+    Type = maps:get(type, Field, string),
+    Options = maps:get(opts, Field, maps:get(options, Field, [])),
+    #eorm_field{
+        name = Name,
+        type = Type,
+        options = Options,
+        primary_key = lists:member(primary_key, Options),
+        nullable = not lists:member(not_null, Options) andalso not lists:member(required, Options),
+        default = proplists:get_value(default, Options)
+    };
+
 parse_field({Name}) ->
     %% 自动推导类型
     {Type, Options} = infer_field_type_and_options(Name),

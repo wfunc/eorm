@@ -125,13 +125,11 @@ count(Query = #eorm_query{}) ->
     eorm_query:count(Query).
 
 %% @doc 检查记录是否存在
--spec exists(module(), map()) -> boolean().
+-spec exists(module(), map() | integer()) -> {ok, boolean()} | {error, term()}.
+exists(Model, Id) when is_integer(Id) ->
+    eorm_crud:exists(Model, #{id => Id});
 exists(Model, Conditions) ->
-    Query = where(new(Model), Conditions),
-    case count(Query) of
-        {ok, Count} -> Count > 0;
-        _ -> false
-    end.
+    eorm_crud:exists(Model, Conditions).
 
 %%====================================================================
 %% 查询构建器 API

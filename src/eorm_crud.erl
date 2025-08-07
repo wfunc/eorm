@@ -6,11 +6,14 @@
     create/2,
     find/2,
     find_all/2,
+    find_all/3,
     first/2,
     last/2,
     update/3,
     delete/2,
-    count/1
+    count/1,
+    count/2,
+    exists/2
 ]).
 
 -include("eorm.hrl").
@@ -29,6 +32,11 @@ find(_Model, _Conditions) ->
 %% @doc 查找所有记录
 -spec find_all(module(), map()) -> {ok, [map()]} | {error, term()}.
 find_all(_Model, _Conditions) ->
+    {ok, []}.
+
+%% @doc 查找所有记录（带选项）
+-spec find_all(module(), map(), map()) -> {ok, [map()]} | {error, term()}.
+find_all(_Model, _Conditions, _Options) ->
     {ok, []}.
 
 %% @doc 查找第一条记录
@@ -55,3 +63,13 @@ delete(_Model, _Conditions) ->
 -spec count(module()) -> {ok, integer()} | {error, term()}.
 count(_Model) ->
     {ok, 0}.
+
+%% @doc 条件计数
+-spec count(module(), map()) -> {ok, integer()} | {error, term()}.
+count(_Model, _Conditions) ->
+    {ok, 0}.
+
+%% @doc 检查存在性
+-spec exists(module(), map() | integer()) -> {ok, boolean()} | {error, term()}.
+exists(_Model, _Conditions) ->
+    {ok, false}.

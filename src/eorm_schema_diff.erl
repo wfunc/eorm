@@ -192,11 +192,11 @@ columns_to_map(Columns) ->
 
 %% @private 检查列是否需要更新
 column_needs_update(ModelDef, DbDef) ->
-    %% 比较类型
-    ModelType = normalize_type(maps:get(type, ModelDef)),
-    DbType = normalize_type(maps:get(type, DbDef)),
+    %% 比较类型 - 安全获取 type 字段
+    ModelType = normalize_type(maps:get(type, ModelDef, undefined)),
+    DbType = normalize_type(maps:get(type, DbDef, undefined)),
     
-    TypeChanged = ModelType =/= DbType,
+    TypeChanged = (ModelType =/= undefined) andalso (DbType =/= undefined) andalso (ModelType =/= DbType),
     
     %% 比较约束
     ModelOptions = maps:get(options, ModelDef, []),

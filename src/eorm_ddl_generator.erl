@@ -107,9 +107,15 @@ generate_postgres_column(Field) ->
 %% @private
 postgres_type(Type, Options) ->
     IsPrimaryKey = lists:member(primary_key, Options),
-    case Type of
+    %% Handle both direct types and map-based types
+    ActualType = case Type of
+        #{type := T} -> T;  % Extract type from map
+        T -> T              % Direct type
+    end,
+    case ActualType of
         integer when IsPrimaryKey -> "SERIAL";
         integer -> "INTEGER";
+        bigint -> "BIGINT";
         {string, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
         string -> "VARCHAR(255)";
         text -> "TEXT";
@@ -125,7 +131,7 @@ postgres_type(Type, Options) ->
         json -> "JSONB";
         uuid -> "UUID";
         {enum, Values} -> generate_postgres_enum(Values);
-        _ -> error({unsupported_type, Type})
+        _ -> error({unsupported_type, ActualType})
     end.
 
 %% @private
@@ -199,9 +205,15 @@ generate_mysql_column(Field) ->
 %% @private
 mysql_type(Type, Options) ->
     IsPrimaryKey = lists:member(primary_key, Options),
-    case Type of
+    %% Handle both direct types and map-based types
+    ActualType = case Type of
+        #{type := T} -> T;  % Extract type from map
+        T -> T              % Direct type
+    end,
+    case ActualType of
         integer when IsPrimaryKey -> "INT AUTO_INCREMENT";
         integer -> "INT";
+        bigint -> "BIGINT";
         {string, Length} -> io_lib:format("VARCHAR(~p)", [Length]);
         string -> "VARCHAR(255)";
         text -> "TEXT";
@@ -217,7 +229,7 @@ mysql_type(Type, Options) ->
         json -> "JSON";
         uuid -> "VARCHAR(36)";
         {enum, Values} -> generate_mysql_enum(Values);
-        _ -> error({unsupported_type, Type})
+        _ -> error({unsupported_type, ActualType})
     end.
 
 %% @private
@@ -285,9 +297,15 @@ generate_sqlite_column(Field) ->
 %% @private
 sqlite_type(Type, Options) ->
     IsPrimaryKey = lists:member(primary_key, Options),
-    case Type of
+    %% Handle both direct types and map-based types
+    ActualType = case Type of
+        #{type := T} -> T;  % Extract type from map
+        T -> T              % Direct type
+    end,
+    case ActualType of
         integer when IsPrimaryKey -> "INTEGER PRIMARY KEY AUTOINCREMENT";
         integer -> "INTEGER";
+        bigint -> "INTEGER";
         {string, _} -> "TEXT";
         string -> "TEXT";
         text -> "TEXT";
@@ -302,7 +320,7 @@ sqlite_type(Type, Options) ->
         binary -> "BLOB";
         json -> "TEXT";
         uuid -> "TEXT";
-        _ -> error({unsupported_type, Type})
+        _ -> error({unsupported_type, ActualType})
     end.
 
 %%====================================================================
@@ -472,13 +490,13 @@ format_default_value(Value) when is_list(Value) -> "'" ++ Value ++ "'";
 format_default_value(Value) when is_binary(Value) -> "'" ++ binary_to_list(Value) ++ "'".
 
 %% @private 格式化索引列
-format_index_columns(Columns, Order) when is_atom(Order) ->
-    %% 所有列使用相同的顺序
+format_index_columns(Columns, Order) when is_atom(Order), Order =/= asc ->
+    %% 只有当不是默认的 asc 时才添加顺序
     ColumnStrs = [atom_to_list(C) ++ " " ++ string:to_upper(atom_to_list(Order)) 
                   || C <- Columns],
     string:join(ColumnStrs, ", ");
 format_index_columns(Columns, _) when is_list(Columns) ->
-    %% 简单列列表
+    %% 简单列列表，不添加顺序
     string:join([atom_to_list(C) || C <- Columns], ", ").
 
 %% @private 转换 ON DELETE/UPDATE 动作
