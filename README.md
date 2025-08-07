@@ -211,18 +211,37 @@ simple_usage:demo().
 
 ### 简单使用示例 (`examples/simple_usage.erl`)
 展示基本的EORM操作：
-- 数据库连接配置
+- 数据库连接配置  
 - 模型注册和自动迁移
-- 基本CRUD操作
-- 查询和更新演示
+- 基本CRUD API演示（当前为stub实现）
+- 错误处理和异常处理
 
-### 博客应用示例 (`examples/blog_example.erl`)
-完整的博客应用示例，包含：
-- 用户、文章、评论、标签模型
-- 复杂关联关系
-- 事务处理
-- 高级查询操作
-- 统计和聚合查询
+运行方式：
+```bash
+# 启动PostgreSQL容器
+docker run --name postgres-dev -e POSTGRES_DB=eorm_test -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=123 -p 5432:5432 -d postgres
+
+# 编译并运行
+rebar3 compile
+cd examples && erlc -pa ../_build/default/lib/*/ebin -I ../include simple_usage.erl
+cd .. && erl -pa examples -pa _build/default/lib/*/ebin -eval "simple_usage:demo()." -s init stop -noshell
+```
+
+### 博客模型示例 (`examples/blog_models.erl`)
+完整的博客应用模型定义，包含：
+- 用户、文章、评论、标签模型定义
+- 复杂字段类型和约束  
+- 动态模块创建和编译
+- 模型关系设计最佳实践
+
+运行方式：
+```erlang
+% 在Erlang shell中
+blog_models:load_all_models().
+% 然后可以使用eorm_registry:register_model/1注册模型
+```
+
+**注意**: 当前EORM框架主要完成了自动迁移功能，CRUD操作为开发中的stub实现。完整的数据库CRUD功能正在开发中。
 
 ## 项目结构
 
