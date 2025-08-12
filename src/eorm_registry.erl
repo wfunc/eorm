@@ -215,8 +215,8 @@ parse_association({Type, Name, Target, Options}) ->
         type = Type,
         target = Target,
         foreign_key = maps:get(foreign_key, Options, infer_foreign_key(Type, Name, Target)),
-        association_foreign_key = maps:get(association_foreign_key, Options),
-        join_table = maps:get(join_table, Options),
+        association_foreign_key = maps:get(association_foreign_key, Options, undefined),
+        join_table = maps:get(join_table, Options, undefined),
         options = maps:to_list(Options)
     }.
 

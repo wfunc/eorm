@@ -4,6 +4,7 @@
 -module(eorm_query).
 
 -export([
+    new/0,
     new/1,
     where/2,
     or_where/2,
@@ -18,8 +19,23 @@
     distinct/1,
     lock/2,
     execute/1,
+    execute/2,
     count/1,
     to_sql/1,
+    build/1,
+    from/2,
+    join/3,
+    left_join/3,
+    right_join/3,
+    inner_join/3,
+    exists/1,
+    where_in/3,
+    where_not_in/3,
+    where_null/2,
+    where_not_null/2,
+    where_between/4,
+    where_like/3,
+    raw_where/2,
     
     %% 新增函数
     union/2,
@@ -37,6 +53,11 @@
 %%====================================================================
 %% API
 %%====================================================================
+
+%% @doc 创建新查询（无参数）
+-spec new() -> #eorm_query{}.
+new() ->
+    #eorm_query{}.
 
 %% @doc 创建新查询
 -spec new(module()) -> #eorm_query{}.
@@ -251,3 +272,82 @@ get_cached_result(_Query) ->
 -spec invalidate_cache(atom()) -> ok.
 invalidate_cache(_Model) ->
     ok.
+
+%%====================================================================
+%% Additional query builder functions
+%%====================================================================
+
+%% @doc Set FROM table
+-spec from(#eorm_query{}, atom()) -> #eorm_query{}.
+from(Query, Table) ->
+    eorm_query_extended:from(Query, Table).
+
+%% @doc Add JOIN clause
+-spec join(#eorm_query{}, atom(), tuple()) -> #eorm_query{}.
+join(Query, Table, On) ->
+    eorm_query_extended:join(Query, Table, On).
+
+%% @doc Add LEFT JOIN clause
+-spec left_join(#eorm_query{}, atom(), tuple()) -> #eorm_query{}.
+left_join(Query, Table, On) ->
+    eorm_query_extended:left_join(Query, Table, On).
+
+%% @doc Add RIGHT JOIN clause
+-spec right_join(#eorm_query{}, atom(), tuple()) -> #eorm_query{}.
+right_join(Query, Table, On) ->
+    eorm_query_extended:right_join(Query, Table, On).
+
+%% @doc Add INNER JOIN clause
+-spec inner_join(#eorm_query{}, atom(), tuple()) -> #eorm_query{}.
+inner_join(Query, Table, On) ->
+    eorm_query_extended:inner_join(Query, Table, On).
+
+%% @doc Check if results exist
+-spec exists(#eorm_query{}) -> {ok, boolean()} | {error, term()}.
+exists(Query) ->
+    eorm_query_extended:exists(Query).
+
+%% @doc Add WHERE IN clause
+-spec where_in(#eorm_query{}, atom(), list() | tuple()) -> #eorm_query{}.
+where_in(Query, Field, Values) ->
+    eorm_query_extended:where_in(Query, Field, Values).
+
+%% @doc Add WHERE NOT IN clause
+-spec where_not_in(#eorm_query{}, atom(), list()) -> #eorm_query{}.
+where_not_in(Query, Field, Values) ->
+    eorm_query_extended:where_not_in(Query, Field, Values).
+
+%% @doc Add WHERE NULL clause
+-spec where_null(#eorm_query{}, atom()) -> #eorm_query{}.
+where_null(Query, Field) ->
+    eorm_query_extended:where_null(Query, Field).
+
+%% @doc Add WHERE NOT NULL clause
+-spec where_not_null(#eorm_query{}, atom()) -> #eorm_query{}.
+where_not_null(Query, Field) ->
+    eorm_query_extended:where_not_null(Query, Field).
+
+%% @doc Add WHERE BETWEEN clause
+-spec where_between(#eorm_query{}, atom(), term(), term()) -> #eorm_query{}.
+where_between(Query, Field, Min, Max) ->
+    eorm_query_extended:where_between(Query, Field, Min, Max).
+
+%% @doc Add WHERE LIKE clause
+-spec where_like(#eorm_query{}, atom(), binary()) -> #eorm_query{}.
+where_like(Query, Field, Pattern) ->
+    eorm_query_extended:where_like(Query, Field, Pattern).
+
+%% @doc Add raw WHERE clause
+-spec raw_where(#eorm_query{}, binary()) -> #eorm_query{}.
+raw_where(Query, RawSQL) ->
+    eorm_query_extended:raw_where(Query, RawSQL).
+
+%% @doc Build SQL from query
+-spec build(#eorm_query{}) -> binary().
+build(Query) ->
+    to_sql(Query).
+
+%% @doc Execute with specific adapter
+-spec execute(#eorm_query{}, atom()) -> {ok, list()} | {error, term()}.
+execute(Query, Adapter) ->
+    eorm_query_extended:execute_with_adapter(Query, Adapter).

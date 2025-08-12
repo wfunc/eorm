@@ -9,9 +9,12 @@
     model :: module(),
     table :: atom(),
     select = [] :: list(),
+    from :: atom() | undefined,
     where = [] :: list(),
     order = [] :: list(),
+    order_by = [] :: list(),  % Alias for order
     group = [] :: list(),
+    group_by = [] :: list(),  % Alias for group
     having = [] :: list(),
     joins = [] :: list(),
     preload = [] :: list(),
@@ -22,6 +25,7 @@
     
     %% 新增字段
     union = [] :: list(),
+    unions = [] :: list(),  % Alternative name
     hints = [] :: list(),
     optimized = false :: boolean(),
     cache_ttl :: integer() | undefined

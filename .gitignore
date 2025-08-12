@@ -103,3 +103,6 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# Personal configuration
+.serena/

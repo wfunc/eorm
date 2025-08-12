@@ -40,30 +40,31 @@ auto_migrate(Models, Options) ->
         Adapter = get_adapter(Options),
         
         %% 确保迁移历史表存在
-        ok = eorm_migration_history:ensure_table(Adapter),
-        
-        %% 处理每个模型
-        Results = lists:map(fun(Model) ->
-            migrate_model(Adapter, Model, Options)
-        end, Models),
-        
-        %% 检查所有结果
-        case lists:all(fun(R) -> R =:= ok end, Results) of
-            true -> ok;
-            false -> {error, {migration_failed, Results}}
+        case eorm_migration_history:ensure_table(Adapter) of
+            ok ->
+                %% 处理每个模型
+                Results = lists:map(fun(Model) ->
+                    migrate_model(Adapter, Model, Options)
+                end, Models),
+                
+                %% 检查所有结果
+                case lists:all(fun(R) -> R =:= ok end, Results) of
+                    true -> ok;
+                    false -> {error, {migration_failed, Results}}
+                end;
+            EnsureError ->
+                throw(EnsureError)
         end
     catch
+        throw:no_adapter_configured ->
+            {error, {migration_error, no_adapter_configured}};
+        throw:{error, Reason} ->
+            {error, {migration_error, Reason}};
         Type:Error:_Stacktrace ->
-            %% 不记录预期的配置错误（如 no_adapter_configured）
-            case Error of
-                no_adapter_configured -> 
-                    {error, {migration_error, Error}};
-                _ ->
-                    %% 只记录非预期的错误
-                    error_logger:error_msg("Auto migration failed: ~p:~p~n", 
-                                          [Type, Error]),
-                    {error, {migration_error, Error}}
-            end
+            %% 只记录非预期的错误
+            error_logger:error_msg("Auto migration failed: ~p:~p~n", 
+                                  [Type, Error]),
+            {error, {migration_error, Error}}
     end.
 
 %% @doc 生成迁移计划但不执行
@@ -299,7 +300,7 @@ get_adapter(Options) ->
             %% 使用默认适配器
             case application:get_env(eorm, default_adapter) of
                 {ok, Adapter} -> Adapter;
-                undefined -> error(no_adapter_configured)
+                undefined -> throw(no_adapter_configured)
             end;
         Adapter ->
             Adapter

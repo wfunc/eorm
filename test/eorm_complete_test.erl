@@ -84,7 +84,7 @@ test_create_index() ->
 
 test_drop_table() ->
     DDL = eorm_ddl_generator:generate_drop_table(postgres, users),
-    ?assertEqual(<<"DROP TABLE IF EXISTS users">>, iolist_to_binary(DDL)).
+    ?assertEqual(<<"DROP TABLE IF EXISTS users CASCADE">>, iolist_to_binary(DDL)).
 
 test_drop_index() ->
     DDL = eorm_ddl_generator:generate_drop_index(postgres, idx_name),

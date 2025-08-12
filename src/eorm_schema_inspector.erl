@@ -340,7 +340,16 @@ get_sqlite_index_info([_Seq, Name, _Unique, _Origin, _Partial]) ->
     SQL = "PRAGMA index_info(" ++ binary_to_list(Name) ++ ")",
     case eorm_adapter:query(sqlite, SQL, []) of
         {ok, Rows} ->
-            Columns = [binary_to_atom(element(3, Row), utf8) || Row <- Rows],
+            Columns = lists:filtermap(fun(Row) ->
+                case Row of
+                    Row when is_tuple(Row) andalso tuple_size(Row) >= 3 ->
+                        {true, binary_to_atom(element(3, Row), utf8)};
+                    [_, _, ColName | _] when is_binary(ColName) ->
+                        {true, binary_to_atom(ColName, utf8)};
+                    _ ->
+                        false
+                end
+            end, Rows),
             [{binary_to_atom(Name, utf8), Columns}];
         _ ->
             []

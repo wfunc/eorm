@@ -18,9 +18,9 @@ auto_migrate_main_test_() ->
     ].
 
 test_auto_migrate_empty() ->
-    %% Test with empty model list - expect error when no adapter configured
+    %% Test with empty model list - expect error when no database configured
     Result = eorm_auto_migrate:auto_migrate([]),
-    ?assertMatch({error, {migration_error, no_adapter_configured}}, Result).
+    ?assertMatch({error, {migration_error, no_database_configured}}, Result).
 
 test_auto_migrate_with_options() ->
     %% Test with various options
@@ -81,7 +81,7 @@ test_get_adapter_without_options() ->
         _Result = eorm_auto_migrate:get_adapter(#{}),
         ok
     catch
-        error:no_adapter_configured -> ok
+        throw:no_adapter_configured -> ok
     end.
 
 test_validate_models_valid() ->
